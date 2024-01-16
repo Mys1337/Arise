@@ -54,6 +54,7 @@ class Program
 
     static async Task<int> getMaxPageAsync()
     {
+        //note that this is redirecting to this solo leveling chapter just to get the website raw selector.It's just here for the template of the download 
         string baseUrlChapter = "https://mangapanda.in/solo-leveling-chapter-1";
         var chromeOptions = new ChromeOptions();
         chromeOptions.AddArguments("--headless");
