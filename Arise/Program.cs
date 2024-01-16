@@ -1,28 +1,82 @@
 ﻿using System;
 using System.IO;
 using System.Net.Http;
+using System.Linq;
 using System.Threading.Tasks;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 
+class ChapterState
+{
+    public bool ContinueToNextChapter { get; set; } = true;
+}
+
 class Program
 {
+    
+
+    private static int maxpage;
+
     static async Task Main()
     {
-        string baseUrlChapter = "https://mangapanda.in/solo-leveling-chapter-";
-        string baseUrl = "https://mangapanda.in/solo-leveling-chapter-1#";
-        string url;
-        for (int i = 1; i < 16; i++)
+
+        Console.Write("Enter the manga name: ");
+        string mangaName = Console.ReadLine();
+
+        mangaName = mangaName.Replace(" ", "-");
+
+        for (int j = 1; j < 5; j++)
         {
-            url = baseUrl + i;
-            await DownloadImagesAsync(url);
+            string baseUrlChapter = "https://mangapanda.in/"+mangaName+"-chapter-" + j;
+            maxpage = await getMaxPageAsync();
+            string baseUrl = baseUrlChapter + "#";
+            string url;
+
+            // Create a single folder for each chapter
+            string chapterDirectory = $@"D:\download\Chapter_{j}";
+            Directory.CreateDirectory(chapterDirectory);
+
+            var chapterState = new ChapterState();
+
+            for (int i = 1; i <= maxpage; i++)
+            {
+                url = baseUrl + i;
+                await DownloadImagesAsync(url, i, chapterDirectory, chapterState); // Pass the chapter number, directory, and state to DownloadImagesAsync
+
+                if (!chapterState.ContinueToNextChapter)
+                {
+                    // Optionally add code here if you need to perform additional actions before continuing to the next chapter
+                    break; // Exit the outer loop
+                }
+            }
         }
     }
 
-    static async Task DownloadImagesAsync(string url)
+    static async Task<int> getMaxPageAsync()
+    {
+        string baseUrlChapter = "https://mangapanda.in/solo-leveling-chapter-1";
+        var chromeOptions = new ChromeOptions();
+        chromeOptions.AddArguments("--headless");
+
+        using (var driver = new ChromeDriver(chromeOptions))
+        {
+            driver.Navigate().GoToUrl(baseUrlChapter);
+
+            var optionElements = driver.FindElements(By.XPath("//select[@name='select' and @id='page_select']/option[@value]"));
+
+            maxpage = optionElements
+                .Select(option =>
+                    int.Parse(System.Text.RegularExpressions.Regex.Match(option.GetAttribute("value"), @"\d+").Value)
+                )
+                .Max();
+        }
+        return maxpage;
+    }
+
+    static async Task DownloadImagesAsync(string url, int chapterNumber, string chapterDirectory, ChapterState chapterState)
     {
         var chromeOptions = new ChromeOptions();
-        chromeOptions.AddArgument("--headless"); // Run Chrome in headless mode (no UI)
+        chromeOptions.AddArgument("--headless");
 
         using (var driver = new ChromeDriver(chromeOptions))
         {
@@ -34,13 +88,23 @@ class Program
             {
                 string imageUrl = imageElement.GetAttribute("data-original");
 
-                // Download the image
-                await DownloadImageAsync(imageUrl);
+                // Check if the imageUrl is a valid absolute URI
+                if (Uri.TryCreate(imageUrl, UriKind.Absolute, out Uri result))
+                {
+                    // Download the image
+                    await DownloadImageAsync(imageUrl, chapterDirectory);
+                }
+                else
+                {
+                    Console.WriteLine($"Invalid URI for image in Chapter {chapterNumber}. Skipping to the next chapter.");
+                    chapterState.ContinueToNextChapter = false;
+                    break; // Exit the inner loop
+                }
             }
         }
     }
 
-    static async Task DownloadImageAsync(string imageUrl)
+    static async Task DownloadImageAsync(string imageUrl, string downloadDirectory)
     {
         using (HttpClient client = new HttpClient())
         {
@@ -49,8 +113,7 @@ class Program
             // Get the filename from the URL
             string fileName = Path.GetFileName(new Uri(imageUrl).LocalPath);
 
-            // Save the image to a file
-            string downloadDirectory = @"D:\download";
+            // Save the image to a file within the chapter folder
             File.WriteAllBytes(Path.Combine(downloadDirectory, fileName), imageBytes);
 
             Console.WriteLine($"Downloaded: {fileName}");
